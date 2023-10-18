@@ -1,4 +1,4 @@
-# PROJECT 2
+# Banking Client-Server
 
 ## Status Report
 
