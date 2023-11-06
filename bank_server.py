@@ -3,13 +3,8 @@
 # Bank Server application
 # Jimmy da Geek
 
-
-#mention on the document:
-#error messages - unsure if I did them right
-#my server doesnt close unless manually
-#what am I supposed to do about malicious attempts
-#I used threads instead of selectors
-
+#TODO
+#documentation
 
 import socket
 import threading
@@ -23,15 +18,10 @@ ACCT_FILE = "accounts.txt"
 server_running = True
 
 connected_accounts = []
+thread_accounts = {}
 
 
-##########################################################
-#                                                        #
-# Bank Server Core Functions                             #
-#                                                        #
-# No Changes Needed in This Section                      #
-#                                                        #
-##########################################################
+# Bank Server Core Functions                             
 
 def acctNumberIsValid(ac_num):
     """Return True if ac_num represents a valid account number. This does NOT test whether the account actually exists, only
@@ -69,16 +59,17 @@ class BankAccount:
             
     def checkPin(self, pin):
         if self.acct_pin == pin:
-            return "T"
-        return "F"
+            return "0"
+        return "1"
 
     def deposit(self, amount):
         """ Make a deposit. The value of amount must be valid for bank transactions. If amount is valid, update the acct_balance.
         This method returns three values: self, success_code, current balance.
         Success codes are: 0: valid result; 1: invalid amount given. """
-        result_code = 0
+        result_code = "0"
+        
         if not amountIsValid(amount):
-            result_code = 1
+            result_code = "1"
         else:
             # valid amount, so add it to balance and set succes_code 1
             self.acct_balance += amount
@@ -89,13 +80,13 @@ class BankAccount:
         """ Make a withdrawal. The value of amount must be valid for bank transactions. If amount is valid, update the acct_balance.
         This method returns three values: self, success_code, current balance.
         Success codes are: 0: valid result; 1: invalid amount given; 2: attempted overdraft. """
-        result_code = 0
+        result_code = "0"
         if not amountIsValid(amount):
             # invalid amount, return error 
-            result_code = 1
+            result_code = "1"
         elif amount > self.acct_balance:
             # attempted overdraft
-            result_code = 2
+            result_code = "2"
         else:
             # all checks out, subtract amount from the balance
             self.acct_balance -= amount
@@ -150,141 +141,110 @@ def load_all_accounts(acct_file = "accounts.txt"):
     print("Finished loading account data")
     return True
 
-def validate(conn,data):
+def validate(conn,data,thread_id):
+    """ Validate account and pin.
+    Codes are: 3 if data is not in correct format; 2 if already logged in elsewhere, 1 if wrong pin, 0 is successful validation"""
+    if (len(data)!=3 or 
+        not (isinstance(data[1], str) and len(data[1]) == 8 and data[1][2] == '-' and data[1][:2].isalpha() and data[1][3:8].isdigit()) or 
+        not (isinstance(data[2], str) and len(data[2]) == 4 and data[2].isdigit())):
+        result = "3"
+        return
     account = data[1]
     pin = data[2]
-    result = "F"
+    result = "1"
     
     if(account in ALL_ACCOUNTS.keys()):
         result = ALL_ACCOUNTS[account].checkPin(pin)
         if(account in connected_accounts):
-            result = "D"
+            result = "2"
         else:
             connected_accounts.append(account)
     
+    if result == "0": #add thread id and account num to dict if validated
+        thread_accounts[thread_id] = account
+    
     conn.sendall(bytes(result, "utf-8"))
     
-def deposit(conn,data):
-    result = ALL_ACCOUNTS[data[1]].deposit(float(data[2]))
-    
-    if result[1] == 0:
-        conn.sendall(bytes("YD", "utf-8"))
-    else:
-        conn.sendall(bytes("ND", "utf-8"))
+def deposit(conn,data, thread_id):
+    if (not float(data[1])):
+        result = 3
+        return
+    result = ALL_ACCOUNTS[thread_accounts[thread_id]].deposit(float(data[1]))
+    conn.sendall(bytes(result[1], "utf-8"))
 
-def withdraw(conn,data):
-    result = ALL_ACCOUNTS[data[1]].withdraw(float(data[2]))
-    
-    if result[1] == 0:
-        conn.sendall(bytes("YW", "utf-8"))
-    else:
-        conn.sendall(bytes("NW", "utf-8"))
 
-##########################################################
-#                                                        #
-# Bank Server Network Operations                         #
-#                                                        #
-# TODO: THIS SECTION NEEDS TO BE WRITTEN!!               #
-#                                                        #
-##########################################################
+def withdraw(conn,data, thread_id):
+    if (not float(data[1])):
+        result = 3
+        return
+    result = ALL_ACCOUNTS[thread_accounts[thread_id]].withdraw(float(data[1]))
+    conn.sendall(bytes(result[1], "utf-8"))
 
-def run_network_server(conn, data):
+
+# Bank Server Network Operations                         
+def run_network_server(conn, data, thread_id):
+    """ Main funciton of netwrok server. Takes data and proceeds accordingly. Returns false when it is time to close connection. """
     data = data.decode("utf-8")
     data = data.split("##")
     
-    
-    if(data[0]=="END"):
+    if(len(data) == 0 or data[0]=="END"):
         print(f"Disconnecting from {client_socket.getpeername()}")
-        if data[1] in connected_accounts:
-            connected_accounts.remove(data[1])
+        if thread_accounts[thread_id] in connected_accounts:
+            connected_accounts.remove(thread_accounts[thread_id])
         return False 
 
     if(data[0]=="Validate"):
-        validate(conn, data)
+        validate(conn, data, thread_id)
         
     elif(data[0] == "Balance"):
-        conn.sendall(bytes(str(ALL_ACCOUNTS[data[1]].acct_balance), "utf-8"))
+        conn.sendall(bytes(str(ALL_ACCOUNTS[thread_accounts[thread_id]].acct_balance), "utf-8"))
     
     elif (data[0] == "Deposit"):
-        deposit(conn, data)
+        deposit(conn, data, thread_id)
         
     elif (data[0] == "Withdraw"):
-        withdraw(conn,data)
+        withdraw(conn,data,thread_id)
+    else:
+        conn.sendall(bytes("Data sent incorrect format", "utf-8"))
+        print(f"Disconnecting from {client_socket.getpeername()}")
+        return False 
+    
     
     return True
 
-##########################################################
-#                                                        #
-# Bank Server Demonstration                              #
-#                                                        #
-# Demonstrate basic server functions.                    #
-# No changes needed in this section.                     #
-#                                                        #
-##########################################################
-
-def demo_bank_server():
-    """ A function that exercises basic server functions and prints out the results. """
-    # get the demo account from the database
-    acct = get_acct("zz-99999")
-    print(f"Test account '{acct.acct_number}' has PIN {acct.acct_pin}")
-    print(f"Current account balance: {acct.acct_balance}")
-    print(f"Attempting to deposit 123.45...")
-    _, code, new_balance = acct.deposit(123.45)
-    if not code:
-        print(f"Successful deposit, new balance: {new_balance}")
-    else:
-        print(f"Deposit failed!")
-    print(f"Attempting to withdraw 123.45 (same as last deposit)...")
-    _, code, new_balance = acct.withdraw(123.45)
-    if not code:
-        print(f"Successful withdrawal, new balance: {new_balance}")
-    else:
-        print("Withdrawal failed!")
-    print(f"Attempting to deposit 123.4567...")
-    _, code, new_balance = acct.deposit(123.4567)
-    if not code:
-        print(f"Successful deposit (oops), new balance: {new_balance}")
-    else:
-        print(f"Deposit failed as expected, code {code}") 
-    print(f"Attempting to withdraw 12345.45 (too much!)...")
-    _, code, new_balance = acct.withdraw(12345.45)
-    if not code:
-        print(f"Successful withdrawal (oops), new balance: {new_balance}")
-    else:
-        print(f"Withdrawal failed as expected, code {code}")
-    print("End of demo!")
-
-##########################################################
-#                                                        #
-# Bank Server Startup Operations                         #
-#                                                        #
-# No changes needed in this section.                     #
-#                                                        #
-##########################################################
+# Bank Server Startup Operations                         
 def handle_client(client_socket):
+    """Start a thread for a client-server connection and continue to call run_network_server until it is time to exit"""
     print(f"Accepted connection from {client_socket.getpeername()}")
+    
+    thread_id = threading.current_thread().ident
     
     result = True
     while(result):
         data = client_socket.recv(1024)
-        result = run_network_server(client_socket, data)
+        result = run_network_server(client_socket, data, thread_id)
+        
+    thread_accounts[thread_id] = None
     
-#terminante server by pressing CTRL+C
 def signal_handler(signal, frame):
-    print("bank server exiting...")
+    """Terminate server by pressing CTRL+C"""
+    print("\nbank server exiting...")
     sys.exit(0)
 
 if __name__ == "__main__":
+    
     signal.signal(signal.SIGINT, signal_handler)
     # on startup, load all the accounts from the account file
     load_all_accounts(ACCT_FILE)
     # uncomment the next line in order to run a simple demo of the server in action
     #demo_bank_server()
     
+    #set up socket
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.bind((HOST, PORT))
     server_socket.listen(6)  # Listen for incoming connections
     
+    #set up threating
     while server_running:
         try:
             client_socket, addr = server_socket.accept()  # Accept a new connection

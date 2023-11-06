@@ -6,15 +6,8 @@ import socket
 
 HOST = "127.0.0.1"      # The bank server's IP address
 PORT = 65432            # The port used by the bank server
-
-##########################################################
-#                                                        #
-# ATM Client Network Operations                          #
-#                                                        #
-# NEEDS REVIEW. Changes may be needed in this section.   #
-#                                                        #
-##########################################################
-
+                                                     
+# ATM Client Network Operations      
 def send_to_server(sock, msg):
     """ Given an open socket connection (sock) and a string msg, send the string to the server. """
     return sock.sendall(msg.encode('utf-8'))
@@ -31,17 +24,21 @@ def login_to_server(sock, acct_num, pin):
 
 def get_login_info():
     """ Get info from customer."""
-    check = False
     acct_num = ""
     pin = ""
     
+    acct_num = input("Please enter your account number: ")
+    check = isinstance(acct_num, str) and len(acct_num) == 8 and acct_num[2] == '-' and acct_num[:2].isalpha() and acct_num[3:8].isdigit()
+    
     while(not check):
-        acct_num = input("Please enter your account number: ")
+        acct_num = input("That was not valid. Please Try again: ")
         check = isinstance(acct_num, str) and len(acct_num) == 8 and acct_num[2] == '-' and acct_num[:2].isalpha() and acct_num[3:8].isdigit()
         
-    check = False; 
+    pin = input("Please enter your four digit PIN: ")
+    check = isinstance(pin, str) and len(pin) == 4 and pin.isdigit()
+    
     while(not check):
-        pin = input("Please enter your four digit PIN: ")
+        pin = input("That was not valid. Please try again: ")
         check = isinstance(pin, str) and len(pin) == 4 and pin.isdigit()
         
     return acct_num, pin
@@ -50,56 +47,57 @@ def process_deposit(sock, acct_num):
     bal = get_acct_balance(sock, acct_num)
     
     check = False
-    amt = "initial"
+    amt = input(f"How much would you like to deposit? (You have ${bal} available)\n")
     
     while(not check):
         try:
             amt = float(amt)
             check = True
         except:
-            amt = input(f"How much would you like to deposit? (You have ${bal} available)\n")
+            amt = input(f"That was not valid. Please try again. (You have ${bal} available)\n")
     
-    send_to_server(sock, "Deposit##" + str(acct_num) + "##" + str(amt))
+    send_to_server(sock, "Deposit##"+ str(amt))
     success = get_from_server(sock)
     # communicate with the server to request the deposit, check response for success or failure.
     
     bal = get_acct_balance(sock, acct_num)
-    if success == "YD":
+    if success == "0":
         print(f"Deposit transaction completed. (You have ${bal} available)")
     else:
         print(f"Desposit transaction was unable to be completed. (You have ${bal} available)")
+        process_deposit(sock, acct_num)
     return
 
 def get_acct_balance(sock, acct_num):
     """ Ask the server for current account balance. """
-    send_to_server(sock, "Balance##" + acct_num)
+    send_to_server(sock, "Balance" )
     return get_from_server(sock)
 
 def process_withdrawal(sock, acct_num):
-    """ TODO: Write this code. """
     bal = get_acct_balance(sock, acct_num)
     check = False
-    amt = "initial"
+    
+    amt = input(f"How much would you like to withdraw? (You have ${bal} available)\n")
     
     while(not check):
         try:
             amt = float(amt)
             check = True
         except:
-            amt = input(f"How much would you like to withdraw? (You have ${bal} available)\n")
+            amt = input(f"That was not valid. Please try again (You have ${bal} available)\n")
         
     
-    send_to_server(sock, "Withdraw##" + str(acct_num) + "##" + str(amt))
+    send_to_server(sock, "Withdraw##" + str(amt))
     success = get_from_server(sock)
     
     # communicate with the server to request the withdrawal, check response for success or failure.
     
     bal = get_acct_balance(sock, acct_num)
-    if success == "YW":
+    if success == "0":
          print(f"Withdrawal transaction completed. (You have ${bal} available)")
     else:
-        print(f"Withdrawal transaction was unable to be completed. (You have ${bal} available)")
-
+        print(f"Withdrawal transaction was unable to be completed. You entered an invalid amount. (You have ${bal} available)")
+        process_withdrawal(sock, acct_num)
     return
 
 def process_customer_transactions(sock, acct_num): #
@@ -122,28 +120,24 @@ def run_atm_core_loop(sock):
     """ Given an active network connection to the bank server, run the core business loop. """
     acct_num, pin = get_login_info() #asks customer to log in
     validated = login_to_server(sock, acct_num, pin) #try to log in
-    if validated == "T": 
+    if validated == "0": 
         print("Thank you, your credentials have been validated.")
-    elif validated == "D":
+    elif validated == "2":
         print("You are already logged in on another device.")
-        send_to_server(sock, "END##" + acct_num)
+        send_to_server(sock, "END")
+        return False 
+    elif validated == "3":
+        print("Data was sent in the wrong format")
+        send_to_server(sock, "END")
         return False 
     else: #exit out if incorrect sign in
         print("Account number and PIN do not match. Terminating ATM session.")
-        send_to_server(sock, "END##" + acct_num)
+        send_to_server(sock, "END")
         return False 
     process_customer_transactions(sock, acct_num)
     print("ATM session terminating.")
-    send_to_server(sock, "END##" + acct_num)
+    send_to_server(sock, "END" )
     return True
-
-##########################################################
-#                                                        #
-# ATM Client Startup Operations                          #
-#                                                        #
-# No changes needed in this section.                     #
-#                                                        #
-##########################################################
 
 def run_network_client():
     """ This function connects the client to the server and runs the main loop. """
