@@ -43,7 +43,8 @@ def get_login_info():
         
     return acct_num, pin
 
-def process_deposit(sock, acct_num):
+def process_deposit(sock):
+    """ Processes a deposit """
     bal = get_acct_balance(sock, acct_num)
     
     check = False
@@ -60,21 +61,22 @@ def process_deposit(sock, acct_num):
     success = get_from_server(sock)
     # communicate with the server to request the deposit, check response for success or failure.
     
-    bal = get_acct_balance(sock, acct_num)
+    bal = get_acct_balance(sock)
     if success == "0":
         print(f"Deposit transaction completed. (You have ${bal} available)")
     else:
         print(f"Desposit transaction was unable to be completed. (You have ${bal} available)")
-        process_deposit(sock, acct_num)
+        process_deposit(sock)
     return
 
-def get_acct_balance(sock, acct_num):
+def get_acct_balance(sock):
     """ Ask the server for current account balance. """
     send_to_server(sock, "Balance" )
     return get_from_server(sock)
 
-def process_withdrawal(sock, acct_num):
-    bal = get_acct_balance(sock, acct_num)
+def process_withdrawal(sock):
+    """ Processes a withdrawl """
+    bal = get_acct_balance(sock)
     check = False
     
     amt = input(f"How much would you like to withdraw? (You have ${bal} available)\n")
@@ -92,15 +94,15 @@ def process_withdrawal(sock, acct_num):
     
     # communicate with the server to request the withdrawal, check response for success or failure.
     
-    bal = get_acct_balance(sock, acct_num)
+    bal = get_acct_balance(sock)
     if success == "0":
          print(f"Withdrawal transaction completed. (You have ${bal} available)")
     else:
         print(f"Withdrawal transaction was unable to be completed. You entered an invalid amount. (You have ${bal} available)")
-        process_withdrawal(sock, acct_num)
+        process_withdrawal(sock)
     return
 
-def process_customer_transactions(sock, acct_num): #
+def process_customer_transactions(sock): #
     """ Ask customer for a transaction, communicate with server. TODO: Revise as needed. """
     while True: #what do they want to do 
         print("Select a transaction. Enter 'd' to deposit, 'w' to withdraw, or 'x' to exit.")
@@ -112,9 +114,9 @@ def process_customer_transactions(sock, acct_num): #
             # if customer wants to exit, break out of the loop
             break
         elif req == 'd':
-            process_deposit(sock, acct_num)
+            process_deposit(sock)
         else:
-            process_withdrawal(sock, acct_num)
+            process_withdrawal(sock)
 
 def run_atm_core_loop(sock):
     """ Given an active network connection to the bank server, run the core business loop. """
@@ -134,7 +136,7 @@ def run_atm_core_loop(sock):
         print("Account number and PIN do not match. Terminating ATM session.")
         send_to_server(sock, "END")
         return False 
-    process_customer_transactions(sock, acct_num)
+    process_customer_transactions(sock)
     print("ATM session terminating.")
     send_to_server(sock, "END" )
     return True

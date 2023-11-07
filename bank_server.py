@@ -3,9 +3,6 @@
 # Bank Server application
 # Jimmy da Geek
 
-#TODO
-#documentation
-
 import socket
 import threading
 import signal
@@ -166,6 +163,8 @@ def validate(conn,data,thread_id):
     conn.sendall(bytes(result, "utf-8"))
     
 def deposit(conn,data, thread_id):
+    """Ensures data is in the correct format, if it is than deposit requested amount
+    Success codes are: 0: valid result; 1: invalid amount given; 3: wrong format."""
     if (not float(data[1])):
         result = 3
         return
@@ -174,6 +173,8 @@ def deposit(conn,data, thread_id):
 
 
 def withdraw(conn,data, thread_id):
+    """Ensures data is in the correct format, if it is than withdraw requested amount
+    Success codes are: 0: valid result; 1: invalid amount given; 2: attempted overdraft; 3: wrong format."""
     if (not float(data[1])):
         result = 3
         return
@@ -236,8 +237,6 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
     # on startup, load all the accounts from the account file
     load_all_accounts(ACCT_FILE)
-    # uncomment the next line in order to run a simple demo of the server in action
-    #demo_bank_server()
     
     #set up socket
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
