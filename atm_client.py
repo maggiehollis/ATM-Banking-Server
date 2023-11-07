@@ -45,7 +45,7 @@ def get_login_info():
 
 def process_deposit(sock):
     """ Processes a deposit """
-    bal = get_acct_balance(sock, acct_num)
+    bal = get_acct_balance(sock)
     
     check = False
     amt = input(f"How much would you like to deposit? (You have ${bal} available)\n")
